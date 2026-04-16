@@ -23,19 +23,11 @@ void cmd_init(void) {
     mkdir(".pes/refs", 0755);
     mkdir(REFS_DIR, 0755);
 
-    if (access(HEAD_FILE, F_OK) != 0) {
         FILE *f = fopen(HEAD_FILE, "w");
         if (f) {
             fprintf(f, "ref: refs/heads/main\n");
             fclose(f);
         }
-    }
-    char main_ref[512];
-    snprintf(main_ref, sizeof(main_ref), "%s/main", REFS_DIR);
-
-    if (access(main_ref, F_OK) != 0) {
-        FILE *f = fopen(main_ref, "w");
-        if (f) fclose(f);
     }
 
     printf("Initialized empty PES repository in %s/\n", PES_DIR);
