@@ -130,7 +130,62 @@ int tree_serialize(const Tree *tree, void **data_out, size_t *len_out) {
 //   - object_write    : save that binary buffer to the store as OBJ_TREE
 //
 // Returns 0 on success, -1 on error.
+int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out);
+
+static int write_tree_level(IndexEntry *entries, int count, const char *prefix, ObjectID *id_out) {
+    Tree tree;
+    tree.count = 0;
+
+    int i = 0;
+    while (i < count) {
+        const char *path = entries[i].path + strlen(prefix);
+        char *slash = strchr(path, '/');
+
+        if (!slash) {
+            // It's a file directly at this level
+            TreeEntry *e = &tree.entries[tree.count++];
+            e->mode = entries[i].mode;
+            e->hash = entries[i].hash;
+            strncpy(e->name, path, sizeof(e->name) - 1);
+            i++;
+        } else {
+            // It's a subdirectory — collect all entries under this dir
+            int dir_len = slash - path;
+            char dir_name[256];
+            strncpy(dir_name, path, dir_len);
+            dir_name[dir_len] = '\0';
+
+            // Find how many entries share this same subdirectory prefix
+            char full_prefix[512];
+            snprintf(full_prefix, sizeof(full_prefix), "%s%s/", prefix, dir_name);
+            int j = i;
+            while (j < count && strncmp(entries[j].path, full_prefix, strlen(full_prefix)) == 0)
+                j++;
+
+            // Recursively build the subtree
+            ObjectID sub_id;
+            if (write_tree_level(entries + i, j - i, full_prefix, &sub_id) != 0)
+                return -1;
+
+            TreeEntry *e = &tree.entries[tree.count++];
+            e->mode = MODE_DIR;
+            e->hash = sub_id;
+            strncpy(e->name, dir_name, sizeof(e->name) - 1);
+            i = j;
+        }
+    }
+
+    void *data;
+    size_t len;
+    if (tree_serialize(&tree, &data, &len) != 0) return -1;
+    int ret = object_write(OBJ_TREE, data, len, id_out);
+    free(data);
+    return ret;
+}
+
 int tree_from_index(ObjectID *id_out) {
-    (void)id_out;
-    return 0;
+    Index index;
+    if (index_load(&index) != 0) return -1;
+    if (index.count == 0) return -1;
+    return write_tree_level(index.entries, index.count, "", id_out);
 }
